@@ -66,9 +66,9 @@ func main() {
 		return
 	}
 
-	inputPath := filepath.Join(filepath.Dir(cfg.Path), "types.xml")
+	inputPath := filepath.Join(filepath.Dir(cfg.Path), "\\types.xml")
 
-	backupBase := filepath.Join(filepath.Dir(cfg.Path), "backups", "types_backup.xml")
+	backupBase := filepath.Join(filepath.Dir(cfg.Path), "\\backups", "\\types_backup.xml")
 	backupPath := getBackupPathWithIndex(backupBase)
 
 	data, err := os.ReadFile(inputPath)
@@ -93,6 +93,11 @@ func main() {
 		return
 	}
 	output = append([]byte(xml.Header), output...)
+
+	if err = os.MkdirAll(filepath.Dir(backupPath), 0755); err != nil {
+		fmt.Printf("Ошибка создания директории для бэкапа: %v\n", err)
+		return
+	}
 
 	if err = os.WriteFile(backupPath, data, 0644); err != nil {
 		fmt.Printf("Ошибка создания бэкапа: %v\n", err)

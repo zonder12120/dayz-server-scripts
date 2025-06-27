@@ -99,13 +99,18 @@ func main() {
 	}
 
 	inputPath := filepath.Join(filepath.Dir(cfg.Path), "AIPatrolSettings.json")
-	
+
 	backupBase := filepath.Join(filepath.Dir(cfg.Path), "backups", "AIPatrolSettings_backup.json")
 	backupPath := getBackupPathWithIndex(backupBase)
 
 	data, err := os.ReadFile(inputPath)
 	if err != nil {
 		panic("Ошибка чтения исходного JSON: " + err.Error())
+	}
+
+	if err = os.MkdirAll(filepath.Dir(backupPath), 0755); err != nil {
+		fmt.Printf("Ошибка создания директории для бэкапа: %v\n", err)
+		return
 	}
 
 	if err = os.WriteFile(backupPath, data, 0644); err != nil {
