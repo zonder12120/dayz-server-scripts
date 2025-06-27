@@ -43,6 +43,10 @@
 ```text
 cd сюда_вставляем_скопированный_путь
 ```
+Например, вот так:
+```text
+cd C:\Users\daniil\GolandProjects\dayz-server-scripts
+```
 6. Далее, исходя из нужного нам скрипта, запускаем его через команду в PowerShell
 ```text
 go run директория_конкретного_скрипта/main.go
