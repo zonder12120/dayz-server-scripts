@@ -98,7 +98,7 @@ func main() {
 		return
 	}
 
-	inputPath := filepath.Join(filepath.Dir(cfg.Path), "\\AIPatrolSettings.json")
+	inputPath := filepath.Join(filepath.Dir(cfg.Path), "AIPatrolSettings.json")
 	
 	backupBase := filepath.Join(filepath.Dir(cfg.Path), "backups", "AIPatrolSettings_backup.json")
 	backupPath := getBackupPathWithIndex(backupBase)
