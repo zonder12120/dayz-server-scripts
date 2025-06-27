@@ -8,15 +8,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
-const (
-	// 🔧 Пути к файлам
-	path = "C:\\Games\\DayZServer\\mpmissions\\dayzOffline.chernarusplus\\db\\types.xml"
-
-	// Коэффициент лута (на него умножается исходное значение, нужно всегда иметь backup файл с ванильными значениями, либо перегенерировать его
-	scaleFactor = 0.5
-)
+type Config struct {
+	Path        string  `yaml:"path"`
+	ScaleFactor float64 `yaml:"scale_factor"`
+}
 
 type Types struct {
 	XMLName xml.Name `xml:"types"`
@@ -29,7 +28,7 @@ type Type struct {
 	InnerXML string   `xml:",innerxml"`
 }
 
-func scaleNominal(innerXML string) string {
+func scaleNominal(innerXML string, scaleFactor float64) string {
 	lines := strings.Split(innerXML, "\n")
 	for i, line := range lines {
 		lineTrimmed := strings.TrimSpace(line)
@@ -50,21 +49,42 @@ func scaleNominal(innerXML string) string {
 	return strings.Join(lines, "\n")
 }
 
+func loadConfig(configPath string) (Config, error) {
+	var cfg Config
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return cfg, err
+	}
+	err = yaml.Unmarshal(data, &cfg)
+	return cfg, err
+}
+
 func main() {
-	data, err := os.ReadFile(path)
+	cfg, err := loadConfig("config.yml")
+	if err != nil {
+		fmt.Printf("Ошибка загрузки конфигурации: %v\n", err)
+		return
+	}
+
+	inputPath := filepath.Join(filepath.Dir(cfg.Path), "types.xml")
+
+	backupBase := filepath.Join(filepath.Dir(cfg.Path), "backups", "types_backup.xml")
+	backupPath := getBackupPathWithIndex(backupBase)
+
+	data, err := os.ReadFile(inputPath)
 	if err != nil {
 		fmt.Printf("Ошибка чтения файла: %v\n", err)
 		return
 	}
 
 	var types Types
-	if err := xml.Unmarshal(data, &types); err != nil {
+	if err = xml.Unmarshal(data, &types); err != nil {
 		fmt.Printf("Ошибка парсинга XML: %v\n", err)
 		return
 	}
 
 	for i := range types.Types {
-		types.Types[i].InnerXML = scaleNominal(types.Types[i].InnerXML)
+		types.Types[i].InnerXML = scaleNominal(types.Types[i].InnerXML, cfg.ScaleFactor)
 	}
 
 	output, err := xml.MarshalIndent(types, "", "  ")
@@ -74,16 +94,32 @@ func main() {
 	}
 	output = append([]byte(xml.Header), output...)
 
-	backupPath := filepath.Join(filepath.Dir(path), "types_backup.xml")
-	if err := os.WriteFile(backupPath, data, 0644); err != nil {
+	if err = os.WriteFile(backupPath, data, 0644); err != nil {
 		fmt.Printf("Ошибка создания бэкапа: %v\n", err)
 		return
 	}
 
-	if err := os.WriteFile(path, output, 0644); err != nil {
+	if err = os.WriteFile(inputPath, output, 0644); err != nil {
 		fmt.Printf("Ошибка записи файла: %v\n", err)
 		return
 	}
 
-	fmt.Println("Файл успешно обновлён. Бэкап сохранён как:", backupPath)
+	fmt.Println("🎉 Готово! Бэкап сохранён как:", backupPath)
+}
+
+func getBackupPathWithIndex(basePath string) string {
+	ext := filepath.Ext(basePath)
+	name := strings.TrimSuffix(filepath.Base(basePath), ext)
+	dir := filepath.Dir(basePath)
+
+	backupPath := filepath.Join(dir, name+ext)
+	i := 1
+	for {
+		if _, err := os.Stat(backupPath); os.IsNotExist(err) {
+			break
+		}
+		backupPath = filepath.Join(dir, fmt.Sprintf("%s (%d)%s", name, i, ext))
+		i++
+	}
+	return backupPath
 }

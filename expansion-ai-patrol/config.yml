@@ -1,0 +1,22 @@
+# Путь к файлу AIPatrolSettings.json, сюда же будут сохраняться backup, сохраняя исходные значения
+path: "C:\\путь_к_серверу\\mpmissions\\название_миссии\\expansion\\settings"
+
+# Настройки генерации патрулей
+min_ai: 10 # Минимальное количество ботов в патруле
+max_ai: 15 # Максимальное количество ботов в патруле
+patrol_multiplier: 2 # Коэффициент количества патрулей/группировок (2 - в 2 раза больше, если поставить значение выше, сервак может лагать)
+respawn_time: 600.0 # Время респавна в секундах (600 = 10 минут)
+min_waypoints: 3 # Минимальное количество Waypoints на нов
+max_waypoints: 7 # Максимальное количество Waypoints на но
+map_min_coord: 250 # Минимальная координата X/Z на карте
+map_max_coord: 15000 # Максимальная координата X/Z на карте
+# mapMaxCoord = 15000 // Для ChernarusPlus
+# mapMaxCoord = 12800 // Для Livonia (Enoch)
+# mapMaxCoord = 12800 // Для Namalsk
+# mapMaxCoord = 20480 // Для Deer Isle
+# mapMaxCoord = 10240 // Для Esseker
+# mapMaxCoord = 20480 // Для Takistan
+# mapMaxCoord = 12800 // Для Banov
+# mapMaxCoord = 10240 // Для Pripyat
+# mapMaxCoord = 10240 // Для Valning
+# mapMaxCoord = 12288 // Для Iztek
