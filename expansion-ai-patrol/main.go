@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"github.com/zonder12120/dayz-server-scripts/pkg"
 )
 
 type Config struct {
@@ -23,19 +23,18 @@ type Config struct {
 	PatrolMultiplier int     `yaml:"patrol_multiplier"`
 }
 
-// generateWaypoint создаёт уникальную точку Waypoint в пределах карты
-func generateWaypoint(existing map[string]struct{}, cfg Config) []float64 {
-	var x, z float64
-	for {
-		x = float64(rand.Intn(cfg.MapMaxCoord-cfg.MapMinCoord) + cfg.MapMinCoord)
-		z = float64(rand.Intn(cfg.MapMaxCoord-cfg.MapMinCoord) + cfg.MapMinCoord)
+func generateWaypoint(usedCoords map[string]struct{}, cfg Config) ([]float64, error) {
+	const maxAttempts = 1000
+	for attempts := 0; attempts < maxAttempts; attempts++ {
+		x := float64(rand.Intn(cfg.MapMaxCoord-cfg.MapMinCoord) + cfg.MapMinCoord)
+		z := float64(rand.Intn(cfg.MapMaxCoord-cfg.MapMinCoord) + cfg.MapMinCoord)
 		key := fmt.Sprintf("%.0f_%.0f", x, z)
-		if _, exists := existing[key]; !exists {
-			existing[key] = struct{}{}
-			break
+		if _, exists := usedCoords[key]; !exists {
+			usedCoords[key] = struct{}{}
+			return []float64{x, 0.0, z}, nil
 		}
 	}
-	return []float64{x, 0.0, z}
+	return nil, fmt.Errorf("failed to generate a unique waypoint after %d attempts. Map may be saturated with points", maxAttempts)
 }
 
 type Settings struct {
@@ -92,37 +91,43 @@ type Patrol struct {
 }
 
 func main() {
-	cfg, err := loadConfig("config.yml")
+	// Загрузка конфигурации
+	var cfg Config
+	err := pkg.LoadConfig("config.yml", &cfg)
 	if err != nil {
 		fmt.Printf("Ошибка загрузки конфигурации: %v\n", err)
 		return
 	}
 
+	// Определение путей к файлам
 	inputPath := filepath.Join(filepath.Dir(cfg.Path), "AIPatrolSettings.json")
-
 	backupBase := filepath.Join(filepath.Dir(cfg.Path), "backups", "AIPatrolSettings_backup.json")
-	backupPath := getBackupPathWithIndex(backupBase)
 
+	// Чтение JSON-файла
 	data, err := os.ReadFile(inputPath)
 	if err != nil {
-		panic("Ошибка чтения исходного JSON: " + err.Error())
+		fmt.Printf("Ошибка чтения исходного JSON-файла: %v\n", err)
+		return
 	}
 
+	// Создание бэкапа
+	backupPath := pkg.GetBackupPathWithIndex(backupBase)
 	if err = os.MkdirAll(filepath.Dir(backupPath), 0755); err != nil {
 		fmt.Printf("Ошибка создания директории для бэкапа: %v\n", err)
 		return
 	}
-
 	if err = os.WriteFile(backupPath, data, 0644); err != nil {
-		panic("Ошибка записи бэкапа: " + err.Error())
+		fmt.Printf("Ошибка записи бэкапа: %v\n", err)
+		return
 	}
+	fmt.Println("💾 Бэкап сохранён как:", backupPath)
 
 	var settings Settings
 	if err = json.Unmarshal(data, &settings); err != nil {
-		panic("Ошибка парсинга JSON: " + err.Error())
+		fmt.Printf("Ошибка парсинга JSON: %v\n", err)
+		return
 	}
 
-	// Уникальные координаты Waypoint’ов
 	usedCoords := make(map[string]struct{})
 	for _, p := range settings.Patrols {
 		for _, wp := range p.Waypoints {
@@ -131,28 +136,40 @@ func main() {
 		}
 	}
 
+	originalCount := len(settings.Patrols)
+	if originalCount == 0 {
+		fmt.Println("❌ В исходном файле нет патрулей. Добавление новых патрулей невозможно.")
+		return
+	}
+
+	countToAdd := originalCount * cfg.PatrolMultiplier
+	fmt.Printf("📦 Исходных патрулей: %d. Будет добавлено: %d.\n", originalCount, countToAdd)
+
+	newPatrols := make([]Patrol, 0, originalCount+countToAdd)
+
 	// Обновление существующих патрулей
-	var newPatrols []Patrol
 	for _, p := range settings.Patrols {
 		p.NumberOfAI = rand.Intn(cfg.MaxAI-cfg.MinAI+1) + cfg.MinAI
 		p.RespawnTime = cfg.RespawnTime
 		newPatrols = append(newPatrols, p)
 	}
 
-	originalCount := len(settings.Patrols)
-	countToAdd := originalCount * cfg.PatrolMultiplier
-	fmt.Printf("📦 Исходных патрулей: %d. Будет добавлено: %d.\n", originalCount, countToAdd)
-
-	// Генерация новых патрулей
+	// Генерация новыйх патрулей
 	for i := 0; i < countToAdd; i++ {
 		template := settings.Patrols[i%originalCount]
 		newP := template
+		newP.Name = fmt.Sprintf("%s_cloned_%d", strings.TrimSuffix(template.Name, "_cloned_"), i+1)
 		newP.NumberOfAI = rand.Intn(cfg.MaxAI-cfg.MinAI+1) + cfg.MinAI
 		newP.RespawnTime = cfg.RespawnTime
 		wpCount := rand.Intn(cfg.MaxWaypoints-cfg.MinWaypoints+1) + cfg.MinWaypoints
 		newP.Waypoints = nil
 		for j := 0; j < wpCount; j++ {
-			newP.Waypoints = append(newP.Waypoints, generateWaypoint(usedCoords, cfg))
+			wp, err := generateWaypoint(usedCoords, cfg)
+			if err != nil {
+				fmt.Printf("⚠️ Предупреждение: Не удалось сгенерировать Waypoint для патруля #%d. %v\n", i+1, err)
+				break
+			}
+			newP.Waypoints = append(newP.Waypoints, wp)
 		}
 		newPatrols = append(newPatrols, newP)
 		fmt.Printf("✅ Новый патруль #%d: %d точек маршрута\n", i+1, wpCount)
@@ -162,38 +179,14 @@ func main() {
 
 	output, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
-		panic("Ошибка сериализации JSON: " + err.Error())
+		fmt.Printf("Ошибка сериализации JSON: %v\n", err)
+		return
 	}
+
 	if err = os.WriteFile(inputPath, output, 0644); err != nil {
-		panic("Ошибка сохранения нового JSON: " + err.Error())
+		fmt.Printf("Ошибка сохранения нового JSON: %v\n", err)
+		return
 	}
 
-	fmt.Printf("🎉 Готово! Всего патрулей: %d. Бэкап: %s\n", len(settings.Patrols), backupPath)
-}
-
-func loadConfig(configPath string) (Config, error) {
-	var cfg Config
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return cfg, err
-	}
-	err = yaml.Unmarshal(data, &cfg)
-	return cfg, err
-}
-
-func getBackupPathWithIndex(basePath string) string {
-	ext := filepath.Ext(basePath)
-	name := strings.TrimSuffix(filepath.Base(basePath), ext)
-	dir := filepath.Dir(basePath)
-
-	backupPath := filepath.Join(dir, name+ext)
-	i := 1
-	for {
-		if _, err := os.Stat(backupPath); os.IsNotExist(err) {
-			break
-		}
-		backupPath = filepath.Join(dir, fmt.Sprintf("%s (%d)%s", name, i, ext))
-		i++
-	}
-	return backupPath
+	fmt.Printf("🎉 Готово! Всего патрулей: %d. Файл обновлён: %s\n", len(settings.Patrols), inputPath)
 }
